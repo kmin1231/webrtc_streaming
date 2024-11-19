@@ -1,8 +1,11 @@
-module github.com/GoSTRMSVR/WebRTC
+module WebRTC2
 
 go 1.23.3
 
-require github.com/pion/webrtc/v3 v3.3.4
+require (
+	github.com/gorilla/websocket v1.5.3
+	github.com/pion/webrtc/v3 v3.3.4
+)
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -15,7 +18,7 @@ require (
 	github.com/pion/mdns v0.0.12 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.14 // indirect
-	github.com/pion/rtp v1.8.7 // indirect
+	github.com/pion/rtp v1.8.9 // indirect
 	github.com/pion/sctp v1.8.19 // indirect
 	github.com/pion/sdp/v3 v3.0.9 // indirect
 	github.com/pion/srtp/v2 v2.0.20 // indirect

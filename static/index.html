@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Broadcaster & Viewer</title>
+</head>
+<body>
+    <h1>WebRTC Broadcaster & Viewer</h1>
+    <div>
+        <button id="startBroadcast">Start Broadcasting</button>
+        <video id="localVideo" autoplay playsinline muted></video>
+    </div>
+    <video id="remoteVideo" autoplay playsinline controls></video>
+    <script>
+        const signalingServerUrl = "ws://localhost:8080/signal";
+        let peerConnection;
+        let signalingSocket;
+        let isBroadcaster = false;
+
+        document.getElementById("startBroadcast").addEventListener("click", async () => {
+            isBroadcaster = true;
+            startBroadcast();
+        });
+
+        function startBroadcast() {
+            // 웹소켓 연결
+            signalingSocket = new WebSocket(signalingServerUrl);
+
+            signalingSocket.onopen = async () => {
+                console.log("Connected to the signaling server");
+                signalingSocket.send("broadcaster"); // 역할 식별 메시지 전송
+
+                // 피어 연결 생성
+                const config = {
+                    iceServers: [
+                        { urls: "stun:stun.l.google.com:19302" }
+                    ]
+                };
+                peerConnection = new RTCPeerConnection(config);
+
+                // 로컬 미디어 스트림 가져오기
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById("localVideo").srcObject = stream;
+
+                // 트랙 추가
+                stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+                // ICE 후보자 추가 시 처리
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        signalingSocket.send(JSON.stringify({ candidate: event.candidate }));
+                    }
+                };
+
+                // Offer 생성 및 signaling 서버로 전송
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                signalingSocket.send(JSON.stringify(peerConnection.localDescription));
+            };
+
+            signalingSocket.onmessage = async (message) => {
+                const data = JSON.parse(message.data);
+
+                if (data.type === "answer") {
+                    console.log("Received answer from viewer");
+                    await peerConnection.setRemoteDescription(data);
+                } else if (data.candidate) {
+                    try {
+                        await peerConnection.addIceCandidate(data.candidate);
+                    } catch (err) {
+                        console.error("Error adding received ICE candidate", err);
+                    }
+                }
+            };
+
+            signalingSocket.onerror = (error) => {
+                console.error("WebSocket error: ", error);
+            };
+
+            signalingSocket.onclose = () => {
+                console.log("Disconnected from the signaling server");
+            };
+        }
+
+        // Viewer 코드
+        if (!isBroadcaster) {
+            // 웹소켓 연결
+            signalingSocket = new WebSocket(signalingServerUrl);
+
+            signalingSocket.onopen = () => {
+                console.log("Connected to the signaling server");
+                signalingSocket.send("viewer"); // 역할 식별 메시지 전송
+            };
+
+            signalingSocket.onmessage = async (message) => {
+                const data = JSON.parse(message.data);
+
+                if (data.type === "offer") {
+                    console.log("Received offer from broadcaster");
+
+                    // 피어 연결 생성
+                    const config = {
+                        iceServers: [
+                            { urls: "stun:stun.l.google.com:19302" }
+                        ]
+                    };
+                    peerConnection = new RTCPeerConnection(config);
+
+                    // 원격 비디오 설정
+                    peerConnection.ontrack = (event) => {
+                        document.getElementById("remoteVideo").srcObject = event.streams[0];
+                    };
+
+                    // ICE 후보자 추가 시 처리
+                    peerConnection.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            signalingSocket.send(JSON.stringify({ candidate: event.candidate }));
+                        }
+                    };
+
+                    await peerConnection.setRemoteDescription(data);
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+
+                    // Answer를 signaling 서버로 전송
+                    signalingSocket.send(JSON.stringify(peerConnection.localDescription));
+                } else if (data.candidate) {
+                    try {
+                        await peerConnection.addIceCandidate(data.candidate);
+                    } catch (err) {
+                        console.error("Error adding received ICE candidate", err);
+                    }
+                }
+            };
+
+            signalingSocket.onerror = (error) => {
+                console.error("WebSocket error: ", error);
+            };
+
+            signalingSocket.onclose = () => {
+                console.log("Disconnected from the signaling server");
+            };
+        }
+    </script>
+</body>
+</html>
